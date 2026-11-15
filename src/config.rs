@@ -13,7 +13,9 @@ pub enum Mode {
 }
 
 impl Mode {
+    #[allow(dead_code)]
     pub const ALL: [Mode; 3] = [Mode::Auto, Mode::Manga, Mode::Webtoon];
+    #[allow(dead_code)]
     pub fn label(self) -> &'static str {
         match self {
             Mode::Auto => "Tự động",

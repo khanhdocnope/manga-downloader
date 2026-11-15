@@ -13,9 +13,9 @@ use eframe::egui;
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Manga DL")
-            .with_inner_size([1180.0, 780.0])
-            .with_min_inner_size([880.0, 560.0]),
+            .with_title("Manga DL — Trình tải truyện tranh & Webtoon")
+            .with_inner_size([1220.0, 800.0])
+            .with_min_inner_size([940.0, 620.0]),
         ..Default::default()
     };
     eframe::run_native(
