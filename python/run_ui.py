@@ -18,6 +18,16 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
+# Khi chạy từ PyInstaller --windowed (không mở cửa sổ console đen),
+# sys.stdout, sys.stderr, sys.stdin mặc định là None trên Windows.
+# Cần gán về os.devnull để tránh AttributeError 'isatty' khi uvicorn/logging khởi tạo.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+
 if getattr(sys, "frozen", False):
     BUNDLE_DIR = Path(sys._MEIPASS)
     BASE_DIR = Path.cwd()
@@ -113,6 +123,7 @@ def main() -> int:
         app,
         host=args.host,
         port=port,
+        log_config=None,
         log_level="warning",
         loop="asyncio",
     )
