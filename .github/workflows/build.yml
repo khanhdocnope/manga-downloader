@@ -33,10 +33,6 @@ jobs:
             os: macos-latest
             bin: manga-dl
             pack: tar
-          - name: macos-x64
-            os: macos-13
-            bin: manga-dl
-            pack: tar
     steps:
       - uses: actions/checkout@v4
 
