@@ -95,8 +95,9 @@ def _launch_ui(host: str, port: int, server: uvicorn.Server, mode: str) -> None:
                 # Khởi chạy cửa sổ ứng dụng độc lập, không có thanh địa chỉ duyệt web
                 cmd = [browser_bin, f"--app={url}", "--window-size=1260,840"]
                 proc = subprocess.Popen(cmd)
-                proc.wait()  # Khi người dùng đóng cửa sổ app, tự động tắt server
-                server.should_exit = True
+                if getattr(sys, "frozen", False):
+                    proc.wait()  # Khi chạy file .exe đóng gói, tắt cửa sổ sẽ tắt app
+                    server.should_exit = True
                 return
             except Exception:
                 pass

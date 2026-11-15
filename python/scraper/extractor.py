@@ -169,7 +169,11 @@ class ChapterExtractor:
         self.direction = info.direction
 
         try:
-            await self._traverse()
+            # 1. Thử Turbo Mode: trích xuất nhanh toàn bộ ảnh từ DOM và tải song song
+            turbo_ok = await self._try_turbo()
+            if not turbo_ok and not self._stop:
+                # 2. Fallback sang lật trang / cuộn tuần tự nếu Turbo không quét đủ ảnh
+                await self._traverse()
         except WebtoonDetected:
             raise
         except PlaywrightError as exc:
@@ -185,6 +189,94 @@ class ChapterExtractor:
         if not self.strict and not self._stop:
             await self._flush_orphans()
         return self.files.count
+
+    async def _try_turbo(self) -> bool:
+        """Trích xuất nhanh danh sách URL ảnh từ DOM và tải song song."""
+        try:
+            # Chờ DOM và các ảnh ban đầu sẵn sàng
+            await asyncio.sleep(0.5)
+            urls: list[str] = await self.page.evaluate(
+                """() => {
+                    const rawImgs = Array.from(document.querySelectorAll('img'));
+                    const candidates = [];
+                    for (const img of rawImgs) {
+                        let src = img.getAttribute('data-src') || 
+                                  img.getAttribute('data-original') || 
+                                  img.getAttribute('data-cdn') || 
+                                  img.getAttribute('data-url') ||
+                                  img.getAttribute('data-lazy-src') ||
+                                  img.currentSrc || 
+                                  img.src;
+                        if (!src) continue;
+                        src = src.trim();
+                        if (src.startsWith('data:image/svg') || src.startsWith('blob:')) continue;
+                        const lower = src.toLowerCase();
+                        if (lower.includes('logo') || lower.includes('avatar') || lower.includes('icon') || 
+                            lower.includes('banner') || lower.includes('badge') || lower.includes('button') ||
+                            lower.includes('facebook') || lower.includes('google') || lower.includes('banner')) {
+                            continue;
+                        }
+                        if (img.naturalWidth > 0 && img.naturalWidth < 180) continue;
+                        if (img.naturalHeight > 0 && img.naturalHeight < 180) continue;
+                        const rect = img.getBoundingClientRect();
+                        candidates.push({ src, top: rect.top + window.scrollY });
+                    }
+                    candidates.sort((a, b) => a.top - b.top);
+                    const seen = new Set();
+                    const result = [];
+                    for (const c of candidates) {
+                        if (!seen.has(c.src)) {
+                            seen.add(c.src);
+                            result.push(c.src);
+                        }
+                    }
+                    return result;
+                }"""
+            )
+            if len(urls) < 4:
+                return False
+
+            await self._log("info", f"⚡ Kích hoạt Turbo Engine: Quét được {len(urls)} trang truyện trong DOM. Bắt đầu tải siêu tốc song song...")
+            await self._status("running", turn=0)
+
+            sem = asyncio.Semaphore(12)
+            downloaded = 0
+            total = len(urls)
+
+            async def fetch_and_save(idx: int, img_url: str) -> None:
+                nonlocal downloaded
+                if self._stop:
+                    return
+                try:
+                    async with sem:
+                        resp = await self.page.context.request.get(
+                            img_url,
+                            headers={"Referer": self.page.url},
+                            timeout=20000,
+                        )
+                        if resp.status != 200:
+                            return
+                        data = await resp.body()
+
+                    saved = self.files.save(img_url, data)
+                    if saved is not None:
+                        downloaded += 1
+                        self._consumed.add(img_url)
+                        await self._emit(self.on_saved, saved)
+                        await self._status("running", turn=downloaded)
+                        await self._log("info", f"[{downloaded}/{total}] Đã tải {saved.name} ({saved.width}×{saved.height})")
+                except Exception as exc:
+                    log.debug("Lỗi tải ảnh turbo %s: %s", img_url, exc)
+
+            tasks = [fetch_and_save(i, u) for i, u in enumerate(urls, start=1)]
+            await asyncio.gather(*tasks)
+
+            if downloaded >= 4:
+                await self._log("info", f"🚀 Turbo Engine hoàn tất thành công: {downloaded}/{total} trang!")
+                return True
+        except Exception as exc:
+            log.debug("Thử nghiệm Turbo Engine không thành công (%s), chuyển sang lật trang tuần tự", exc)
+        return False
 
     # --------------------------------------------------------------- traversal
     async def _traverse(self) -> None:

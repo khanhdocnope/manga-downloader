@@ -28,6 +28,7 @@ from main import derive_names
 from scraper.browser import BrowserSession
 from scraper.detector import WEBTOON_MESSAGE, WebtoonDetected
 from scraper.extractor import ChapterExtractor
+from scraper.series import fetch_series_info
 from utils.file_manager import FileManager, SavedImage
 
 if getattr(sys, "frozen", False):
@@ -149,6 +150,94 @@ class AppState:
 
 
 STATE = AppState()
+
+
+class BatchManager:
+    def __init__(self) -> None:
+        self.running: bool = False
+        self.stop_requested: bool = False
+        self.series_title: str = ""
+        self.series_cover: str = ""
+        self.chapters: list[dict[str, Any]] = []
+        self.current_idx: int = -1
+        self.task: Optional[asyncio.Task[None]] = None
+        self.base_cfg: dict[str, Any] = {}
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "type": "batch_snapshot",
+            "running": self.running,
+            "series_title": self.series_title,
+            "series_cover": self.series_cover,
+            "current_idx": self.current_idx,
+            "total": len(self.chapters),
+            "chapters": self.chapters,
+        }
+
+    def request_stop(self) -> None:
+        self.stop_requested = True
+        if STATE.job:
+            STATE.job.request_stop()
+        if self.task and not self.task.done():
+            self.task.cancel()
+        self.running = False
+        STATE.publish({"type": "batch_status", "status": "stopped", "message": "Đã dừng hàng đợi tải"})
+
+    async def run(self, selected_chapters: list[dict[str, Any]], base_cfg: dict[str, Any], series_title: str, series_cover: str = "") -> None:
+        self.running = True
+        self.stop_requested = False
+        self.chapters = selected_chapters
+        self.series_title = series_title
+        self.series_cover = series_cover
+        self.base_cfg = base_cfg
+
+        STATE.publish(self.snapshot())
+
+        for idx, chap in enumerate(self.chapters):
+            if self.stop_requested:
+                break
+            self.current_idx = idx
+            chap["status"] = "running"
+            chap["message"] = "Đang tải..."
+            STATE.publish({"type": "batch_chapter_update", "idx": idx, "status": "running", "message": "Đang tải..."})
+
+            chap_cfg = dict(base_cfg)
+            chap_cfg["url"] = chap["url"]
+            chap_cfg["manga"] = series_title if series_title else None
+            chap_cfg["chapter"] = chap.get("name")
+
+            job = Job(chap_cfg)
+            STATE.job = job
+            STATE.publish(job.snapshot())
+
+            try:
+                job.task = asyncio.create_task(_run_job(job))
+                await job.task
+            except Exception as e:
+                log.warning("Chapter %s lỗi: %s", chap.get("name"), e)
+
+            if job.status == "done":
+                chap["status"] = "done"
+                chap["count"] = len(job.pages)
+                chap["bytes"] = job.bytes
+                chap["message"] = f"Đã lưu {len(job.pages)} trang"
+            elif job.status == "stopped":
+                chap["status"] = "stopped"
+                chap["message"] = "Đã dừng"
+                break
+            else:
+                chap["status"] = "error"
+                chap["message"] = job.message or "Lỗi tải"
+
+            STATE.publish({"type": "batch_chapter_update", "idx": idx, **chap})
+            await asyncio.sleep(0.8)
+
+        self.running = False
+        self.current_idx = -1
+        STATE.publish({"type": "batch_done", "message": "Hoàn tất hàng đợi tải!"})
+
+
+BATCH = BatchManager()
 
 
 class _JobLogHandler(logging.Handler):
@@ -444,3 +533,61 @@ async def download_zip() -> FileResponse:
         tmp, media_type="application/zip", filename=f"{job.zip_name}.zip",
         background=BackgroundTask(os.unlink, tmp),
     )
+
+
+@app.get("/api/download-cbz")
+async def download_cbz() -> FileResponse:
+    job = STATE.job
+    if job is None or job.out_dir is None or not job.pages:
+        raise HTTPException(404, "Chưa có trang nào để xuất CBZ")
+    names = [p["name"] for p in job.pages if (job.out_dir / p["name"]).is_file()]
+    if not names:
+        raise HTTPException(404, "Các file ảnh không còn trên đĩa")
+    fd, tmp = tempfile.mkstemp(prefix="mdl-", suffix=".cbz")
+    os.close(fd)
+    await asyncio.to_thread(_build_zip, job.out_dir, names, job.zip_name, tmp)
+    return FileResponse(
+        tmp, media_type="application/vnd.comicbook+zip", filename=f"{job.zip_name}.cbz",
+        background=BackgroundTask(os.unlink, tmp),
+    )
+
+
+@app.get("/api/series-info")
+async def get_series_info(url: str) -> dict[str, Any]:
+    if not url or not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "URL không hợp lệ")
+    try:
+        data = await fetch_series_info(url)
+        return {"ok": True, "data": data}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/batch-start")
+async def batch_start(req: Request) -> dict[str, Any]:
+    body = await req.json()
+    chapters = body.get("chapters", [])
+    if not chapters:
+        raise HTTPException(400, "Danh sách chapter trống")
+    if BATCH.running:
+        raise HTTPException(400, "Đang có tiến trình tải hàng loạt chạy")
+    try:
+        cfg = _parse_config(body.get("config") or {})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    series_title = body.get("series_title", "")
+    series_cover = body.get("series_cover", "")
+    BATCH.task = asyncio.create_task(BATCH.run(chapters, cfg, series_title, series_cover))
+    return {"ok": True}
+
+
+@app.post("/api/batch-stop")
+async def batch_stop() -> dict[str, Any]:
+    BATCH.request_stop()
+    return {"ok": True}
+
+
+@app.get("/api/batch-state")
+async def batch_state() -> dict[str, Any]:
+    return BATCH.snapshot()
