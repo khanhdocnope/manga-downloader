@@ -1,0 +1,32 @@
+[package]
+name = "manga-dl"
+version = "0.1.0"
+edition = "2021"
+description = "Manga chapter downloader - desktop GUI (Rust port)"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+eframe = "0.29"
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+imagesize = "0.13"
+open = "5"
+percent-encoding = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"] }
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs"] }
+unicode-normalization = "0.1"
+url = "2"
+zip = { version = "2", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4

@@ -1,0 +1,89 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-22.04
+            bin: manga-dl
+            pack: tar
+          - name: windows-x64
+            os: windows-latest
+            bin: manga-dl.exe
+            pack: zip
+          - name: macos-arm64
+            os: macos-latest
+            bin: manga-dl
+            pack: tar
+          - name: macos-x64
+            os: macos-13
+            bin: manga-dl
+            pack: tar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libxcb-render0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package (tar.gz)
+        if: matrix.pack == 'tar'
+        run: |
+          mkdir dist
+          cp target/release/${{ matrix.bin }} README.md dist/
+          tar -czf manga-dl-${{ matrix.name }}.tar.gz -C dist .
+
+      - name: Package (zip)
+        if: matrix.pack == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item target/release/${{ matrix.bin }}, README.md dist/
+          Compress-Archive -Path dist/* -DestinationPath manga-dl-${{ matrix.name }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manga-dl-${{ matrix.name }}
+          path: manga-dl-${{ matrix.name }}.*
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
