@@ -14,8 +14,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build (${{ matrix.name }})
+  # ========================================================
+  # BUILD PYTHON DESKTOP APP (Playwright + FastAPI + Web UI)
+  # ========================================================
+  build-python:
+    name: Build Python Desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            archive: manga-dl-python-windows.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python/requirements.txt
+          pip install pyinstaller
+
+      - name: Build Desktop App with PyInstaller
+        shell: pwsh
+        run: |
+          cd python
+          pyinstaller --noconfirm --onedir --windowed `
+            --name manga-dl `
+            --add-data "web;web" `
+            --collect-all playwright `
+            --collect-all uvicorn `
+            --collect-all starlette `
+            --collect-all fastapi `
+            run_ui.py
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path python/dist/manga-dl/* -DestinationPath ${{ matrix.archive }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manga-dl-python-windows
+          path: ${{ matrix.archive }}
+
+  # ========================================================
+  # BUILD RUST DESKTOP APP (eframe / egui)
+  # ========================================================
+  build-rust:
+    name: Build Rust (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,7 +109,7 @@ jobs:
         run: |
           mkdir dist
           cp target/release/${{ matrix.bin }} README.md dist/
-          tar -czf manga-dl-${{ matrix.name }}.tar.gz -C dist .
+          tar -czf manga-dl-rust-${{ matrix.name }}.tar.gz -C dist .
 
       - name: Package (zip)
         if: matrix.pack == 'zip'
@@ -63,16 +117,19 @@ jobs:
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item target/release/${{ matrix.bin }}, README.md dist/
-          Compress-Archive -Path dist/* -DestinationPath manga-dl-${{ matrix.name }}.zip
+          Compress-Archive -Path dist/* -DestinationPath manga-dl-rust-${{ matrix.name }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: manga-dl-${{ matrix.name }}
-          path: manga-dl-${{ matrix.name }}.*
+          name: manga-dl-rust-${{ matrix.name }}
+          path: manga-dl-rust-${{ matrix.name }}.*
 
+  # ========================================================
+  # RELEASE (Khi push git tag dạng v*)
+  # ========================================================
   release:
     name: Release
-    needs: build
+    needs: [build-python, build-rust]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

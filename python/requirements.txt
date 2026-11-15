@@ -1,0 +1,10 @@
+playwright>=1.44
+httpx>=0.27
+Pillow>=10.3
+aiofiles>=23.2
+rich>=13.7
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websockets>=12.0
+# Tuỳ chọn: Pillow < 11.3 cần plugin này để đọc ảnh AVIF
+# pillow-avif-plugin>=1.4

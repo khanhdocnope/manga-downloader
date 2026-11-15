@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga DL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: { 0: '#09090b', 1: '#121215', 2: '#1a1a1f', 3: '#26262d' },
+          shu: { DEFAULT: '#e0452c', hi: '#f0583e', lo: '#a8301d' },
+          kincha: '#f2a93b',
+          matcha: '#6fbf8e'
+        },
+        fontFamily: {
+          sans: ['"Be Vietnam Pro"', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'Consolas', 'monospace']
+        }
+      }
+    }
+  };
+</script>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js" defer></script>
+<style>
+  :root { --line: rgba(255,255,255,.08); --line-hi: rgba(255,255,255,.17); --dim: #8e8e99; --shu: #e0452c; }
+  html, body { background: #09090b; }
+  body { font-family: "Be Vietnam Pro", system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #e4e4e7; }
+
+  /* Nền: một góc screentone (chấm bán sắc của manga) + vệt đỏ son để kính có thứ để làm mờ */
+  .tone { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .tone::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,.12) 0 1.1px, transparent 1.7px);
+    background-size: 7px 7px;
+    -webkit-mask-image: radial-gradient(ellipse 60% 55% at 100% 0%, #000 0, transparent 72%);
+            mask-image: radial-gradient(ellipse 60% 55% at 100% 0%, #000 0, transparent 72%);
+  }
+  .tone::after {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse 45% 40% at 96% 2%, rgba(224,69,44,.14), transparent 70%);
+  }
+
+  .card { background: rgba(18,18,21,.72); border: 1px solid var(--line); border-radius: 14px;
+          -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  .label { display: block; font-size: .8125rem; font-weight: 500; color: #c9c9d0; margin-bottom: .4rem; }
+  .hint { font-size: .75rem; line-height: 1.45; color: var(--dim); }
+
+  .field { width: 100%; background: #0d0d10; border: 1px solid var(--line); border-radius: 8px;
+           padding: .6rem .75rem; font-size: .875rem; color: #e4e4e7; transition: border-color .15s, box-shadow .15s; }
+  .field::placeholder { color: #55555f; }
+  .field:hover { border-color: var(--line-hi); }
+  .field:focus-visible, .btn:focus-visible, .switch:focus-visible, .icon-btn:focus-visible, .thumb:focus-visible, .acc:focus-visible {
+    outline: none; border-color: var(--shu); box-shadow: 0 0 0 3px rgba(224,69,44,.22); }
+  .field:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: 8px;
+         padding: .65rem 1rem; font-size: .875rem; font-weight: 600; border: 1px solid transparent;
+         transition: background-color .15s, border-color .15s, opacity .15s, transform .08s; cursor: pointer; }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .38; cursor: not-allowed; }
+  .btn-primary { background: var(--shu); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #f0583e; }
+  .btn-ghost { background: rgba(255,255,255,.02); border-color: var(--line-hi); color: #d4d4da; }
+  .btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) { background: rgba(255,255,255,.07); }
+  .btn-sm { padding: .45rem .75rem; font-size: .8125rem; }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem;
+              border-radius: 6px; color: var(--dim); border: 1px solid transparent; cursor: pointer; }
+  .icon-btn:hover { color: #fff; background: rgba(255,255,255,.07); }
+  .btn svg, .icon-btn svg, .acc svg { width: 1rem; height: 1rem; flex: none; }
+
+  .switch { position: relative; width: 2.5rem; height: 1.4rem; flex: none; border-radius: 99px; background: #2a2a31;
+            border: 1px solid var(--line-hi); transition: background-color .18s; cursor: pointer; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.4rem - 6px); height: calc(1.4rem - 6px);
+                   border-radius: 50%; background: #d4d4da; transition: transform .18s; }
+  .switch[aria-checked="true"] { background: var(--shu); border-color: var(--shu); }
+  .switch[aria-checked="true"]::after { transform: translateX(1.1rem); background: #fff; }
+
+  input[type=range] { accent-color: var(--shu); width: 100%; height: 1.25rem; cursor: pointer; }
+  input[type=range]:disabled { opacity: .5; cursor: not-allowed; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .acc { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; text-align: left;
+         font-size: .8125rem; font-weight: 500; color: #c9c9d0; padding: .6rem .75rem; border-radius: 8px;
+         border: 1px solid var(--line); background: #0d0d10; cursor: pointer; }
+  .acc svg { transition: transform .2s; color: var(--dim); }
+  .acc[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .drop { border: 1px dashed var(--line-hi); border-radius: 8px; padding: 1rem; text-align: center; cursor: pointer;
+          font-size: .8125rem; color: var(--dim); transition: border-color .15s, background-color .15s, color .15s; }
+  .drop:hover, .drop.over { border-color: var(--shu); background: rgba(224,69,44,.06); color: #e4e4e7; }
+
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: #55555f; flex: none; }
+  .dot.active { background: var(--shu); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.done { background: #6fbf8e; }
+  .dot.warn { background: #f2a93b; }
+  .dot.err { background: var(--shu); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(224,69,44,.5); } 50% { box-shadow: 0 0 0 6px rgba(224,69,44,0); } }
+
+  .bar { height: 6px; border-radius: 99px; background: #1f1f25; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--shu); border-radius: 99px; transition: width .35s; }
+  .bar.run > i { width: 34%; animation: slide 1.5s ease-in-out infinite; }
+  .bar.full > i { width: 100%; background: #6fbf8e; }
+  @keyframes slide { 0% { margin-left: -34%; } 100% { margin-left: 100%; } }
+
+  .log { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .75rem; line-height: 1.6;
+         background: #0b0b0d; border: 1px solid var(--line); border-radius: 8px; padding: .5rem .75rem;
+         height: 9.5rem; overflow-y: auto; }
+  .log .t { color: #55555f; margin-right: .6rem; }
+  .log .warning { color: #f2a93b; }
+  .log .error { color: #f0583e; }
+  .log .debug { color: #6b6b75; }
+
+  .mode-pill { background: transparent; border-color: transparent; }
+  .mode-pill:hover:not([aria-checked="true"]) { background: rgba(255,255,255,.04); }
+  .mode-pill[aria-checked="true"]#modeManga {
+    background: rgba(224,69,44,.12); border-color: rgba(224,69,44,.4);
+    box-shadow: 0 0 12px rgba(224,69,44,.12);
+  }
+  .mode-pill[aria-checked="true"]#modeManga div span { color: #fff; }
+  .mode-pill[aria-checked="true"]#modeWebtoon {
+    background: rgba(111,191,142,.12); border-color: rgba(111,191,142,.4);
+    box-shadow: 0 0 12px rgba(111,191,142,.12);
+  }
+  .mode-pill[aria-checked="true"]#modeWebtoon div span { color: #fff; }
+
+  .view-btn { cursor: pointer; color: var(--dim); border: 1px solid transparent; }
+  .view-btn:hover:not([aria-pressed="true"]) { color: #e4e4e7; background: rgba(255,255,255,.04); }
+  .view-btn[aria-pressed="true"] { background: rgba(255,255,255,.09); color: #fff; border-color: var(--line-hi); font-weight: 500; }
+
+  .grid-pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .75rem; align-content: start; }
+  .webtoon-pages { display: flex; flex-direction: column; align-items: center; max-width: 820px; margin: 0 auto; gap: 0; width: 100%; }
+  .webtoon-pages .thumb { width: 100%; aspect-ratio: auto; border-radius: 0; border: none; border-bottom: 1px solid rgba(255,255,255,.05); background: transparent; cursor: default; }
+  .webtoon-pages .thumb img { width: 100%; height: auto; object-fit: contain; display: block; image-rendering: auto; }
+  .webtoon-pages .thumb .meta { opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .webtoon-pages .thumb:hover .meta { opacity: 1; }
+  .thumb { position: relative; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: #0d0d10;
+           border: 1px solid var(--line); cursor: zoom-in; padding: 0; animation: pop .28s cubic-bezier(.2,.8,.2,1) both; }
+  .thumb.still { animation: none; }
+  .thumb:hover { border-color: var(--line-hi); }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .thumb .meta { position: absolute; inset: auto 0 0 0; padding: 1.2rem .5rem .4rem; text-align: left;
+                 background: linear-gradient(transparent, rgba(0,0,0,.88)); font: 500 11px/1.35 "JetBrains Mono", monospace; color: #e4e4e7; }
+  .thumb .meta span { display: block; color: #9a9aa5; font-weight: 400; }
+  @keyframes pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+  .slot { aspect-ratio: 2 / 3; border-radius: 6px; border: 1px dashed var(--line-hi); animation: breathe 1.8s ease-in-out infinite;
+          background-image: radial-gradient(circle, rgba(255,255,255,.13) 0 1px, transparent 1.5px); background-size: 6px 6px; }
+  @keyframes breathe { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
+
+  .lightbox { position: fixed; inset: 0; z-index: 50; display: none; flex-direction: column; align-items: center; justify-content: center;
+              background: rgba(9,9,11,.93); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); padding: 1rem; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: min(96vw, 1400px); max-height: 85vh; object-fit: contain; border-radius: 4px; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 2.75rem; height: 2.75rem; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.07);
+            border: 1px solid var(--line-hi); color: #fff; cursor: pointer; }
+  .lb-nav:hover { background: rgba(255,255,255,.15); }
+  .lb-nav svg { width: 1.25rem; height: 1.25rem; }
+
+  .hidden { display: none !important; }
+  .tabnum { font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #2c2c34; border-radius: 99px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot.active, .bar.run > i, .slot, .thumb { animation: none; }
+    .bar.run > i { width: 60%; }
+  }
+</style>
+</head>
+<body>
+<div class="tone" aria-hidden="true"></div>
+
+<div class="relative z-10 mx-auto grid max-w-[1500px] gap-4 p-3 sm:p-4 lg:h-screen lg:grid-cols-[372px_minmax(0,1fr)] lg:p-5">
+
+  <!-- ============ Điều khiển ============ -->
+  <aside class="card flex min-h-0 flex-col lg:overflow-y-auto" aria-label="Điều khiển">
+    <div class="flex items-center gap-3 px-5 pt-5">
+      <div class="flex h-9 w-9 flex-none items-center justify-center rounded-md bg-shu text-lg font-bold text-white" style="transform: rotate(-4deg)" aria-hidden="true">漫</div>
+      <h1 class="text-lg font-semibold tracking-tight">Manga DL</h1>
+    </div>
+
+    <fieldset id="form" class="m-0 min-w-0 border-0 flex flex-col gap-5 px-5 pb-5 pt-5">
+      <div>
+        <label class="label" for="url">URL chapter</label>
+        <div class="relative">
+          <input id="url" class="field pr-11" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://trang-truyen.com/ten-truyen/chapter-12">
+          <button id="paste" type="button" class="icon-btn absolute right-1 top-1/2 -translate-y-1/2" title="Dán từ clipboard" aria-label="Dán URL từ clipboard"><i data-lucide="clipboard-paste"></i></button>
+        </div>
+      </div>
+
+      <!-- 2 Lựa chọn chế độ đọc/tải: Manga vs Webtoon -->
+      <div>
+        <div class="mb-1.5 flex items-center justify-between">
+          <label class="label !mb-0" id="modeLabel">Chế độ truyện</label>
+          <span id="modeBadge" class="text-[11px] font-mono px-2 py-0.5 rounded border border-shu/30 text-shu-hi bg-shu/10">Lật trang</span>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-ink-0 border border-[var(--line)]" role="radiogroup" aria-labelledby="modeLabel">
+          <button id="modeManga" type="button" role="radio" aria-checked="true"
+            class="mode-pill relative flex flex-col items-start gap-1 p-2.5 rounded-lg border text-left transition-all cursor-pointer">
+            <div class="flex items-center gap-1.5 text-xs font-semibold">
+              <i data-lucide="book-open" class="w-4 h-4 text-shu"></i>
+              <span>Manga</span>
+            </div>
+            <span class="text-[11px] text-[var(--dim)] leading-tight">Lật trang, phím mũi tên</span>
+          </button>
+
+          <button id="modeWebtoon" type="button" role="radio" aria-checked="false"
+            class="mode-pill relative flex flex-col items-start gap-1 p-2.5 rounded-lg border text-left transition-all cursor-pointer">
+            <div class="flex items-center gap-1.5 text-xs font-semibold">
+              <i data-lucide="scroll" class="w-4 h-4 text-matcha"></i>
+              <span>Webtoon</span>
+            </div>
+            <span class="text-[11px] text-[var(--dim)] leading-tight">Cuộn dọc, khoá chapter</span>
+          </button>
+        </div>
+        <p id="modeHint" class="hint mt-1.5">Manga Nhật: Lật trang bằng phím mũi tên & click mép (chuẩn trang đơn/đôi).</p>
+      </div>
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <span class="label !mb-1" id="headlessLabel">Chạy ẩn trình duyệt (Headless)</span>
+          <p class="hint">Tắt để hiện cửa sổ Chromium khi trang yêu cầu giải Captcha hoặc Cloudflare thủ công.</p>
+        </div>
+        <button id="headless" type="button" role="switch" aria-checked="true" aria-labelledby="headlessLabel" class="switch mt-0.5"></button>
+      </div>
+
+      <div>
+        <div class="mb-1 flex items-center justify-between">
+          <label class="label !mb-0" for="delayNum">Độ trễ mỗi lần lật trang</label>
+          <div class="flex items-center gap-1.5">
+            <input id="delayNum" class="field tabnum !w-[4.5rem] !px-2 !py-1 text-right" type="number" min="0" max="5000" step="100" value="800">
+            <span class="hint">ms</span>
+          </div>
+        </div>
+        <input id="delay" type="range" min="0" max="5000" step="100" value="800" aria-label="Độ trễ mỗi lần lật trang (ms)">
+        <p class="hint mt-1">Tăng lên nếu trang tải ảnh chậm và bị bỏ sót trang.</p>
+      </div>
+
+      <div>
+        <label class="label" for="outdir">Thư mục lưu</label>
+        <input id="outdir" class="field font-mono !text-[13px]" type="text" spellcheck="false" value="downloads">
+        <p class="hint mt-1">Ảnh được lưu vào <span class="font-mono">&lt;thư mục&gt;/&lt;truyện&gt;/&lt;chapter&gt;/</span>.</p>
+      </div>
+
+      <div>
+        <button id="accBtn" type="button" class="acc" aria-expanded="false" aria-controls="accBody">
+          <span>Cookies JSON <span class="hint">(tuỳ chọn)</span></span>
+          <i data-lucide="chevron-down"></i>
+        </button>
+        <div id="accBody" class="mt-2 hidden">
+          <div id="drop" class="drop" tabindex="0" role="button" aria-label="Chọn hoặc kéo thả file cookies JSON">
+            <span id="dropText">Kéo thả file <span class="font-mono">cookies.json</span> vào đây hoặc bấm để chọn</span>
+          </div>
+          <input id="cookieFile" type="file" accept=".json,application/json" class="hidden">
+          <div id="cookieChip" class="mt-2 hidden items-center justify-between gap-2 rounded-md border border-[var(--line)] bg-ink-2 px-3 py-2 text-[13px]">
+            <span id="cookieName" class="min-w-0 truncate"></span>
+            <button id="cookieClear" type="button" class="icon-btn !h-6 !w-6" aria-label="Bỏ cookies"><i data-lucide="x"></i></button>
+          </div>
+          <p id="cookieErr" class="mt-2 hidden text-[13px] text-shu-hi" role="alert"></p>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="mt-auto border-t border-[var(--line)] px-5 py-4">
+      <div class="flex gap-2">
+        <button id="start" type="button" class="btn btn-primary flex-1"><i data-lucide="play"></i>Bắt đầu tải</button>
+        <button id="stop" type="button" class="btn btn-ghost" disabled><i data-lucide="square"></i>Dừng</button>
+      </div>
+      <p id="formErr" class="mt-3 hidden text-[13px] text-shu-hi" role="alert"></p>
+    </div>
+  </aside>
+
+  <!-- ============ Cột phải ============ -->
+  <main class="grid min-h-0 gap-4 lg:grid-rows-[auto_minmax(0,1fr)]">
+
+    <!-- Trạng thái + log -->
+    <section class="card p-5" aria-label="Trạng thái">
+      <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2.5">
+            <span id="dot" class="dot"></span>
+            <h2 id="phase" class="text-xl font-semibold tracking-tight" aria-live="polite">Sẵn sàng</h2>
+          </div>
+          <p id="phaseMsg" class="mt-1 hidden text-[13px] text-[var(--dim)]"></p>
+        </div>
+        <dl class="flex items-end gap-7">
+          <div>
+            <dt class="hint">Số trang đã lưu</dt>
+            <dd id="count" class="tabnum text-3xl font-semibold leading-none">0</dd>
+          </div>
+          <div>
+            <dt class="hint">Dung lượng</dt>
+            <dd class="tabnum text-3xl font-semibold leading-none"><span id="mb">0.00</span><span class="ml-1 text-sm font-normal text-[var(--dim)]">MB</span></dd>
+          </div>
+        </dl>
+      </div>
+
+      <div id="bar" class="bar mt-4" role="progressbar" aria-label="Tiến trình" aria-valuetext="Sẵn sàng"><i></i></div>
+
+      <div id="webtoon" class="mt-4 hidden items-start gap-3 rounded-lg border border-kincha/40 bg-kincha/10 px-4 py-3" role="alert">
+        <i data-lucide="octagon-alert" class="mt-0.5 h-5 w-5 flex-none text-kincha"></i>
+        <div>
+          <p class="text-sm font-semibold text-kincha">Webtoon Guard đã từ chối link này</p>
+          <p id="webtoonMsg" class="mt-0.5 text-[13px] text-zinc-300"></p>
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <button id="logToggle" type="button" class="flex w-full items-center gap-2 text-left text-[13px] font-medium text-zinc-300" aria-expanded="true" aria-controls="log">
+          <i data-lucide="chevron-down" class="h-4 w-4 flex-none text-[var(--dim)] transition-transform"></i>
+          <span>Nhật ký</span>
+          <span id="logPreview" class="min-w-0 flex-1 truncate font-mono text-xs font-normal text-[var(--dim)]"></span>
+        </button>
+        <div id="log" class="log mt-2" role="log" aria-live="off"></div>
+      </div>
+    </section>
+
+    <!-- Lưới trang -->
+    <section class="card flex min-h-[26rem] flex-col lg:min-h-0" aria-label="Trang đã tải">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-3.5">
+        <div class="flex items-center gap-3">
+          <h2 class="text-sm font-semibold">Trang đã tải <span id="gridCount" class="tabnum ml-1 font-normal text-[var(--dim)]">0</span></h2>
+          <!-- 2 Lựa chọn cách xem trang: Lưới Manga vs Cuộn dọc Webtoon -->
+          <div class="flex items-center p-0.5 rounded-lg bg-ink-0 border border-[var(--line)] text-xs" role="radiogroup" aria-label="Cách xem ảnh">
+            <button id="viewGrid" type="button" aria-pressed="true" class="view-btn flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors" title="Xem dạng lưới ô vuông (Manga)">
+              <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+              <span>Lưới Manga</span>
+            </button>
+            <button id="viewWebtoon" type="button" aria-pressed="false" class="view-btn flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors" title="Xem cuộn dọc liền mạch (Webtoon)">
+              <i data-lucide="scroll" class="w-3.5 h-3.5"></i>
+              <span>Cuộn Webtoon</span>
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="toolErr" class="hidden text-[13px] text-shu-hi"></span>
+          <button id="openFolder" type="button" class="btn btn-ghost btn-sm" disabled><i data-lucide="folder-open"></i>Mở thư mục chứa ảnh</button>
+          <a id="zip" class="btn btn-ghost btn-sm" href="/api/download-zip" download aria-disabled="true" tabindex="-1"><i data-lucide="archive"></i>Tải file .ZIP</a>
+        </div>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto p-4">
+        <div id="empty" class="flex h-full min-h-[14rem] items-center justify-center text-center">
+          <p class="max-w-xs text-sm text-[var(--dim)]">Chưa có trang nào. Dán URL chapter rồi bấm “Bắt đầu tải”, ảnh sẽ hiện ở đây ngay khi được lưu.</p>
+        </div>
+        <div id="pages" class="grid-pages hidden"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Lightbox -->
+<div id="lb" class="lightbox" role="dialog" aria-modal="true" aria-label="Xem ảnh đầy đủ">
+  <button id="lbClose" type="button" class="icon-btn absolute right-4 top-4 !h-10 !w-10" aria-label="Đóng"><i data-lucide="x"></i></button>
+  <button id="lbPrev" type="button" class="lb-nav left-4" aria-label="Trang trước"><i data-lucide="chevron-left"></i></button>
+  <button id="lbNext" type="button" class="lb-nav right-4" aria-label="Trang sau"><i data-lucide="chevron-right"></i></button>
+  <img id="lbImg" alt="">
+  <p id="lbCap" class="mt-3 font-mono text-xs text-zinc-400"></p>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const ACTIVE = new Set(['starting', 'guard', 'running', 'stopping']);
+  const S = { ws: null, jobId: '', status: 'idle', message: '', turn: 0, count: 0, bytes: 0, outDir: '',
+              pages: [], cookies: null, lb: -1 };
+
+  /* ---------- tiện ích ---------- */
+  const fmtMB = (b) => (b / 1048576).toFixed(2);
+  const fmtSize = (b) => (b >= 1048576 ? fmtMB(b) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+  const thumbUrl = (n) => `/api/thumb/${S.jobId}/${n}`;
+  const imageUrl = (n) => `/api/image/${S.jobId}/${n}`;
+  const icons = () => { if (window.lucide) window.lucide.createIcons(); };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('mdl.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('mdl.' + k, JSON.stringify(v)); } catch {} }
+  };
+  const showErr = (el, text) => { el.textContent = text || ''; el.classList.toggle('hidden', !text); };
+
+  /* ---------- trạng thái hiển thị ---------- */
+  const PHASE = {
+    idle: 'Sẵn sàng', starting: 'Đang khởi tạo', guard: 'Đang kiểm tra Webtoon Guard',
+    stopping: 'Đang dừng', done: 'Hoàn tất', stopped: 'Đã dừng',
+    webtoon: 'Bị từ chối: giao diện Webtoon', error: 'Lỗi'
+  };
+  const phaseText = () => S.status === 'running'
+    ? (S.turn > 0 ? `Đang lật trang ${S.turn}` : 'Đang đọc trang đầu')
+    : (PHASE[S.status] || S.status);
+
+  function renderState() {
+    const running = ACTIVE.has(S.status);
+    const text = phaseText();
+    $('#phase').textContent = text;
+    const dot = $('#dot');
+    dot.className = 'dot ' + (running ? 'active' : S.status === 'done' ? 'done' : S.status === 'webtoon' || S.status === 'stopped' ? 'warn' : S.status === 'error' ? 'err' : '');
+    const showMsg = S.message && !['webtoon'].includes(S.status);
+    $('#phaseMsg').textContent = showMsg ? S.message : '';
+    $('#phaseMsg').classList.toggle('hidden', !showMsg);
+    $('#count').textContent = S.count;
+    $('#gridCount').textContent = S.count;
+    $('#mb').textContent = fmtMB(S.bytes);
+    const bar = $('#bar');
+    bar.className = 'bar mt-4' + (running ? ' run' : S.status === 'done' ? ' full' : '');
+    bar.setAttribute('aria-valuetext', text);
+    const wt = $('#webtoon');
+    wt.classList.toggle('hidden', S.status !== 'webtoon');
+    wt.classList.toggle('flex', S.status === 'webtoon');
+    $('#webtoonMsg').textContent = S.status === 'webtoon' ? S.message : '';
+    document.title = running ? `(${S.count}) Manga DL` : 'Manga DL';
+
+    $('#form').disabled = running;
+    $('#start').disabled = running;
+    $('#stop').disabled = !running || S.status === 'stopping';
+    $('#openFolder').disabled = !(S.count > 0 && S.outDir);
+    const zip = $('#zip');
+    const zipOk = S.count > 0 && !running;
+    zip.setAttribute('aria-disabled', zipOk ? 'false' : 'true');
+    zip.tabIndex = zipOk ? 0 : -1;
+    renderSlot(running);
+  }
+
+  function applyState(st) {
+    S.jobId = st.job_id; S.status = st.status; S.message = st.message || '';
+    S.turn = st.turn; S.count = st.count; S.bytes = st.bytes; S.outDir = st.out_dir || '';
+    renderState();
+  }
+
+  /* ---------- log ---------- */
+  function addLog(e) {
+    const box = $('#log');
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
+    const row = document.createElement('div');
+    row.className = e.level;
+    const t = document.createElement('span'); t.className = 't'; t.textContent = e.ts;
+    row.append(t, document.createTextNode(e.message));
+    box.appendChild(row);
+    while (box.childElementCount > 400) box.firstElementChild.remove();
+    if (stick) box.scrollTop = box.scrollHeight;
+    $('#logPreview').textContent = e.message;
+  }
+
+  /* ---------- lưới trang ---------- */
+  function renderSlot(running) {
+    let slot = $('#slot');
+    if (running && !slot && S.pages.length) {
+      slot = document.createElement('div'); slot.id = 'slot'; slot.className = 'slot'; slot.setAttribute('aria-hidden', 'true');
+      $('#pages').appendChild(slot);
+    } else if (!running && slot) slot.remove();
+  }
+
+  function thumbEl(p, still) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'thumb' + (still ? ' still' : ''); b.dataset.index = p.index;
+    b.setAttribute('aria-label', `Xem ${p.name}`);
+    const img = document.createElement('img');
+    img.loading = 'lazy'; img.alt = p.name;
+    // Chế độ Cuộn Webtoon dùng trực tiếp ảnh gốc sắc nét, Lưới Manga dùng thumbnail tối ưu
+    img.src = (viewMode === 'webtoon') ? imageUrl(p.name) : thumbUrl(p.name);
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = p.name;
+    const sub = document.createElement('span'); sub.textContent = `${p.width}×${p.height}`;
+    meta.appendChild(sub);
+    b.append(img, meta);
+    return b;
+  }
+
+  function showGrid() {
+    const has = S.pages.length > 0;
+    $('#empty').classList.toggle('hidden', has);
+    $('#pages').classList.toggle('hidden', !has);
+  }
+
+  function addPage(p, still) {
+    if (S.pages.some((x) => x.index === p.index)) return;
+    S.pages.push(p);
+    const slot = $('#slot');
+    const el = thumbEl(p, still);
+    if (slot) $('#pages').insertBefore(el, slot); else $('#pages').appendChild(el);
+    showGrid();
+    const box = $('#pages').parentElement;
+    if (!still && box.scrollTop + box.clientHeight >= box.scrollHeight - 200) box.scrollTop = box.scrollHeight;
+  }
+
+  function resetJob(snap) {
+    S.pages = [];
+    $('#pages').replaceChildren();
+    $('#log').replaceChildren();
+    $('#logPreview').textContent = '';
+    applyState(snap.state);
+    snap.logs.forEach(addLog);
+    snap.pages.forEach((p) => addPage(p, true));
+    showGrid();
+    renderState();
+    $('#log').scrollTop = $('#log').scrollHeight;
+  }
+
+  $('#pages').addEventListener('click', (e) => {
+    const t = e.target.closest('.thumb');
+    if (t) openLb(S.pages.findIndex((p) => p.index === Number(t.dataset.index)));
+  });
+
+  /* ---------- lightbox ---------- */
+  function openLb(i) {
+    if (i < 0 || i >= S.pages.length) return;
+    S.lb = i;
+    const p = S.pages[i];
+    $('#lbImg').src = imageUrl(p.name);
+    $('#lbImg').alt = p.name;
+    $('#lbCap').textContent = `${p.name}   ${p.width}×${p.height}   ${fmtSize(p.size)}   (${i + 1}/${S.pages.length})`;
+    $('#lb').classList.add('open');
+    $('#lbClose').focus();
+  }
+  function closeLb() { S.lb = -1; $('#lb').classList.remove('open'); $('#lbImg').removeAttribute('src'); }
+  const stepLb = (d) => { if (S.lb >= 0) openLb((S.lb + d + S.pages.length) % S.pages.length); };
+  $('#lbClose').onclick = closeLb;
+  $('#lbPrev').onclick = () => stepLb(-1);
+  $('#lbNext').onclick = () => stepLb(1);
+  $('#lb').addEventListener('click', (e) => { if (e.target.id === 'lb') closeLb(); });
+  document.addEventListener('keydown', (e) => {
+    if (S.lb < 0) return;
+    if (e.key === 'Escape') closeLb();
+    else if (e.key === 'ArrowLeft') stepLb(-1);
+    else if (e.key === 'ArrowRight') stepLb(1);
+  });
+
+  /* ---------- WebSocket ---------- */
+  function handle(ev) {
+    switch (ev.type) {
+      case 'snapshot': resetJob(ev); break;
+      case 'state': applyState(ev); break;
+      case 'log': addLog(ev); break;
+      case 'page':
+        S.count = ev.count; S.bytes = ev.bytes;
+        addPage({ index: ev.index, name: ev.name, width: ev.width, height: ev.height, size: ev.size }, false);
+        renderState();
+        break;
+      case 'error': showErr($('#formErr'), ev.message); break;
+    }
+  }
+  function connect() {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    S.ws = ws;
+    ws.onopen = () => showErr($('#formErr'), '');
+    ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    ws.onclose = () => { showErr($('#formErr'), 'Mất kết nối tới server. Đang thử kết nối lại…'); setTimeout(connect, 1500); };
+  }
+  function send(msg) {
+    if (!S.ws || S.ws.readyState !== WebSocket.OPEN) { showErr($('#formErr'), 'Chưa kết nối được tới server.'); return false; }
+    S.ws.send(JSON.stringify(msg));
+    return true;
+  }
+
+  /* ---------- form ---------- */
+  const delayR = $('#delay'), delayN = $('#delayNum'), headless = $('#headless');
+
+  /* ---------- Chế độ Manga vs Webtoon ---------- */
+  let currentMode = store.get('mode', 'manga');
+  const modeManga = $('#modeManga');
+  const modeWebtoon = $('#modeWebtoon');
+  const modeBadge = $('#modeBadge');
+  const modeHint = $('#modeHint');
+
+  function setMode(mode) {
+    currentMode = mode;
+    store.set('mode', mode);
+    const isManga = mode === 'manga';
+    modeManga.setAttribute('aria-checked', String(isManga));
+    modeWebtoon.setAttribute('aria-checked', String(!isManga));
+    if (isManga) {
+      modeBadge.textContent = 'Lật trang';
+      modeBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border border-shu/30 text-shu-hi bg-shu/10';
+      modeHint.textContent = 'Manga Nhật: Lật trang bằng phím mũi tên & click mép (chuẩn trang đôi/đơn).';
+    } else {
+      modeBadge.textContent = 'Cuộn dọc';
+      modeBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border border-matcha/30 text-matcha bg-matcha/10';
+      modeHint.textContent = 'Webtoon / TruyenQQ: Cuộn dọc liên tục nạp ảnh. Khóa cố định chapter, không tự nhảy sang chap kế.';
+    }
+  }
+  modeManga.onclick = () => setMode('manga');
+  modeWebtoon.onclick = () => setMode('webtoon');
+
+  /* ---------- Chế độ hiển thị xem ảnh: Lưới Manga vs Cuộn Webtoon ---------- */
+  let viewMode = store.get('view_mode', 'grid');
+  const viewGrid = $('#viewGrid');
+  const viewWebtoon = $('#viewWebtoon');
+  const pagesBox = $('#pages');
+
+  function setViewMode(v) {
+    viewMode = v;
+    store.set('view_mode', v);
+    const isG = v === 'grid';
+    viewGrid.setAttribute('aria-pressed', String(isG));
+    viewWebtoon.setAttribute('aria-pressed', String(!isG));
+    pagesBox.classList.toggle('grid-pages', isG);
+    pagesBox.classList.toggle('webtoon-pages', !isG);
+
+    // Cập nhật chất lượng ảnh: Cuộn Webtoon nạp trực tiếp ảnh gốc sắc nét
+    const thumbs = pagesBox.querySelectorAll('.thumb');
+    thumbs.forEach((t) => {
+      const idx = Number(t.dataset.index);
+      const page = S.pages.find((p) => p.index === idx);
+      if (page) {
+        const img = t.querySelector('img');
+        if (img) {
+          img.src = isG ? thumbUrl(page.name) : imageUrl(page.name);
+        }
+      }
+    });
+  }
+  viewGrid.onclick = () => setViewMode('grid');
+  viewWebtoon.onclick = () => setViewMode('webtoon');
+
+  const setDelay = (v) => {
+    v = Math.max(0, Math.min(5000, Math.round((Number(v) || 0) / 100) * 100));
+    delayR.value = v; delayN.value = v; store.set('delay', v);
+  };
+  delayR.oninput = () => setDelay(delayR.value);
+  delayN.onchange = () => setDelay(delayN.value);
+  headless.onclick = () => {
+    const on = headless.getAttribute('aria-checked') !== 'true';
+    headless.setAttribute('aria-checked', String(on)); store.set('headless', on);
+  };
+  $('#outdir').onchange = (e) => store.set('outdir', e.target.value);
+
+  $('#paste').onclick = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text) { $('#url').value = text; showErr($('#formErr'), ''); }
+    } catch {
+      $('#url').focus();
+      showErr($('#formErr'), 'Trình duyệt chặn đọc clipboard. Hãy dán bằng Ctrl+V.');
+    }
+  };
+
+  /* cookies */
+  const accBtn = $('#accBtn');
+  accBtn.onclick = () => {
+    const open = accBtn.getAttribute('aria-expanded') !== 'true';
+    accBtn.setAttribute('aria-expanded', String(open));
+    $('#accBody').classList.toggle('hidden', !open);
+  };
+  function setCookies(text, name) {
+    showErr($('#cookieErr'), '');
+    let data;
+    try { data = JSON.parse(text); } catch { showErr($('#cookieErr'), 'File không phải JSON hợp lệ.'); return; }
+    const list = Array.isArray(data) ? data : (data && Array.isArray(data.cookies) ? data.cookies : null);
+    if (!list) { showErr($('#cookieErr'), 'Cần một mảng cookie, hoặc object có trường "cookies".'); return; }
+    S.cookies = text;
+    $('#cookieName').textContent = `${name} (${list.length} cookie)`;
+    $('#cookieChip').classList.replace('hidden', 'flex');
+  }
+  const readCookieFile = (file) => { if (file) file.text().then((t) => setCookies(t, file.name)); };
+  const drop = $('#drop');
+  drop.onclick = () => $('#cookieFile').click();
+  drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#cookieFile').click(); } };
+  $('#cookieFile').onchange = (e) => { readCookieFile(e.target.files[0]); e.target.value = ''; };
+  ['dragenter', 'dragover'].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => readCookieFile(e.dataTransfer.files[0]));
+  $('#cookieClear').onclick = () => { S.cookies = null; $('#cookieChip').classList.replace('flex', 'hidden'); showErr($('#cookieErr'), ''); };
+
+  /* hành động */
+  $('#start').onclick = () => {
+    showErr($('#formErr'), '');
+    const url = $('#url').value.trim();
+    if (!url) { showErr($('#formErr'), 'Hãy nhập URL chapter.'); $('#url').focus(); return; }
+    send({ action: 'start', config: {
+      url,
+      mode: currentMode,
+      headless: headless.getAttribute('aria-checked') === 'true',
+      delay_ms: Number(delayN.value) || 0,
+      output_dir: $('#outdir').value.trim() || 'downloads',
+      cookies: S.cookies
+    }});
+  };
+  $('#stop').onclick = () => send({ action: 'stop' });
+  $('#url').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('#start').disabled) $('#start').click(); });
+
+  $('#openFolder').onclick = async () => {
+    showErr($('#toolErr'), '');
+    try {
+      const r = await fetch('/api/open-folder', { method: 'POST' });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    } catch (err) { showErr($('#toolErr'), err.message); setTimeout(() => showErr($('#toolErr'), ''), 6000); }
+  };
+  $('#zip').addEventListener('click', (e) => { if ($('#zip').getAttribute('aria-disabled') === 'true') e.preventDefault(); });
+
+  const logToggle = $('#logToggle');
+  logToggle.onclick = () => {
+    const open = logToggle.getAttribute('aria-expanded') !== 'true';
+    logToggle.setAttribute('aria-expanded', String(open));
+    $('#log').classList.toggle('hidden', !open);
+    $('#logPreview').classList.toggle('hidden', open);
+    logToggle.querySelector('svg').style.transform = open ? '' : 'rotate(-90deg)';
+  };
+  $('#logPreview').classList.add('hidden');
+
+  /* khởi tạo */
+  setDelay(store.get('delay', 800));
+  setMode(store.get('mode', 'manga'));
+  setViewMode(store.get('view_mode', 'grid'));
+  headless.setAttribute('aria-checked', String(store.get('headless', true)));
+  $('#outdir').value = store.get('outdir', 'downloads');
+  icons();
+  window.addEventListener('load', icons);
+  renderState();
+  connect();
+})();
+</script>
+</body>
+</html>
