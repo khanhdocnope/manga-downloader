@@ -830,7 +830,7 @@
         })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Không khởi động được batch');
+      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Không khởi động được batch');
     } catch (e) {
       alert('Lỗi: ' + e.message);
       B.running = false;

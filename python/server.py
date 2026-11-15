@@ -254,11 +254,12 @@ class _JobLogHandler(logging.Handler):
             self.handleError(record)
 
 
-def _parse_config(raw: dict[str, Any]) -> dict[str, Any]:
+def _parse_config(raw: dict[str, Any], require_url: bool = True) -> dict[str, Any]:
     url = str(raw.get("url", "")).strip()
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError("URL không hợp lệ: cần bắt đầu bằng http:// hoặc https://")
+    if require_url:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("URL không hợp lệ: cần bắt đầu bằng http:// hoặc https://")
     try:
         delay_ms = max(0, min(int(raw.get("delay_ms", 800)), 30_000))
         max_pages = max(1, min(int(raw.get("max_pages", 500)), 2000))
@@ -266,10 +267,15 @@ def _parse_config(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Độ trễ / số trang tối đa phải là số nguyên") from exc
     cookies = raw.get("cookies")
     if cookies:
-        try:
-            json.loads(cookies)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("Cookies không phải JSON hợp lệ") from exc
+        if isinstance(cookies, (dict, list)):
+            cookies = json.dumps(cookies) if cookies else None
+        elif isinstance(cookies, str):
+            try:
+                json.loads(cookies)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Cookies không phải JSON hợp lệ") from exc
+    else:
+        cookies = None
     mode = str(raw.get("mode", "auto")).lower()
     if mode not in ("auto", "manga", "webtoon"):
         mode = "auto"
@@ -327,6 +333,10 @@ async def _run_job(job: Job) -> None:
             except Exception:  # noqa: BLE001
                 title = ""
             manga, chapter = derive_names(cfg["url"], title)
+            if cfg.get("manga"):
+                manga = slugify(str(cfg["manga"]))
+            if cfg.get("chapter"):
+                chapter = slugify(str(cfg["chapter"]))
             job.out_dir = cfg["output_dir"] / manga / chapter
             job.zip_name = f"{manga}-{chapter}"
             job.add_log("info", f"Thư mục lưu: {job.out_dir}")
@@ -573,7 +583,7 @@ async def batch_start(req: Request) -> dict[str, Any]:
     if BATCH.running:
         raise HTTPException(400, "Đang có tiến trình tải hàng loạt chạy")
     try:
-        cfg = _parse_config(body.get("config") or {})
+        cfg = _parse_config(body.get("config") or {}, require_url=False)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
