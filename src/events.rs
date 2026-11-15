@@ -45,6 +45,7 @@ pub enum Level {
 
 #[derive(Clone, Debug)]
 pub struct PageInfo {
+    #[allow(dead_code)]
     pub index: usize,
     pub name: String,
     pub path: PathBuf,
