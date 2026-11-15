@@ -258,7 +258,7 @@ class ChapterExtractor:
                             return
                         data = await resp.body()
 
-                    saved = self.files.save(img_url, data)
+                    saved = await self.files.save(data, source=img_url, custom_index=idx)
                     if saved is not None:
                         downloaded += 1
                         self._consumed.add(img_url)

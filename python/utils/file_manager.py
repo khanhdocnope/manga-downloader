@@ -51,6 +51,10 @@ class SavedImage:
     source: str
     size: int = 0
 
+    @property
+    def name(self) -> str:
+        return self.path.name
+
 
 class FileManager:
     def __init__(
@@ -100,6 +104,7 @@ class FileManager:
         data: bytes,
         source: str = "",
         force_ext: Optional[str] = None,
+        custom_index: Optional[int] = None,
     ) -> Optional[SavedImage]:
         """Lưu ảnh nếu hợp lệ, đủ lớn và chưa trùng. Trả về None nếu bị loại."""
         digest = self.sha256(data)
@@ -128,7 +133,7 @@ class FileManager:
                 self.stats["invalid"] += 1
                 return None
 
-            index = len(self._saved) + 1
+            index = custom_index if custom_index is not None else (len(self._saved) + 1)
             path = self.out_dir / f"{index:03d}{ext}"
             try:
                 self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -141,4 +146,5 @@ class FileManager:
             self._hashes.add(digest)
             item = SavedImage(index, path, digest, width, height, source, len(data))
             self._saved.append(item)
+            self._saved.sort(key=lambda x: x.index)
             return item

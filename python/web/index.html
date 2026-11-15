@@ -637,11 +637,23 @@
   }
 
   function addPage(p, still) {
+    if (!p || typeof p.index !== 'number') return;
     if (S.pages.some((x) => x.index === p.index)) return;
     S.pages.push(p);
-    const slot = $('#slot');
+    S.pages.sort((a, b) => a.index - b.index);
+
     const el = thumbEl(p, still);
-    if (slot) $('#pages').insertBefore(el, slot); else $('#pages').appendChild(el);
+    const slot = $('#slot');
+    const existingThumbs = Array.from($('#pages').querySelectorAll('.thumb'));
+    const nextEl = existingThumbs.find(t => parseInt(t.dataset.index, 10) > p.index);
+
+    if (nextEl) {
+      $('#pages').insertBefore(el, nextEl);
+    } else if (slot) {
+      $('#pages').insertBefore(el, slot);
+    } else {
+      $('#pages').appendChild(el);
+    }
     showGrid();
   }
 
@@ -853,7 +865,11 @@
       } else if (msg.type === 'state') {
         applyState(msg);
       } else if (msg.type === 'page') {
-        addPage(msg.item, false);
+        const item = msg.item || msg;
+        addPage(item, false);
+        if (typeof msg.count === 'number') S.count = msg.count;
+        if (typeof msg.bytes === 'number') S.bytes = msg.bytes;
+        renderState();
       } else if (msg.type === 'log') {
         addLog(msg);
       } else if (msg.type === 'batch_chapter_update') {

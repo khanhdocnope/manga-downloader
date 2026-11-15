@@ -300,7 +300,8 @@ async def _run_job(job: Job) -> None:
         page = {"index": item.index, "name": item.path.name, "width": item.width,
                 "height": item.height, "size": item.size}
         job.pages.append(page)
-        STATE.publish({"type": "page", **page, "count": len(job.pages), "bytes": job.bytes})
+        job.pages.sort(key=lambda x: x["index"])
+        STATE.publish({"type": "page", "item": page, **page, "count": len(job.pages), "bytes": job.bytes})
 
     async def on_log(level: str, message: str) -> None:
         job.add_log(level, message)
