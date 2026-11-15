@@ -29,7 +29,7 @@ from scraper.browser import BrowserSession
 from scraper.detector import WEBTOON_MESSAGE, WebtoonDetected
 from scraper.extractor import ChapterExtractor
 from scraper.series import fetch_series_info
-from utils.file_manager import FileManager, SavedImage
+from utils.file_manager import FileManager, SavedImage, safe_folder_name, slugify
 
 if getattr(sys, "frozen", False):
     BUNDLE_DIR = Path(sys._MEIPASS)
@@ -334,9 +334,9 @@ async def _run_job(job: Job) -> None:
                 title = ""
             manga, chapter = derive_names(cfg["url"], title)
             if cfg.get("manga"):
-                manga = slugify(str(cfg["manga"]))
+                manga = safe_folder_name(str(cfg["manga"]))
             if cfg.get("chapter"):
-                chapter = slugify(str(cfg["chapter"]))
+                chapter = safe_folder_name(str(cfg["chapter"]))
             job.out_dir = cfg["output_dir"] / manga / chapter
             job.zip_name = f"{manga}-{chapter}"
             job.add_log("info", f"Thư mục lưu: {job.out_dir}")

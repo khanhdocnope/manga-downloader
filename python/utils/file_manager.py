@@ -41,6 +41,13 @@ def slugify(text: str, fallback: str = "untitled") -> str:
     return text[:80] or fallback
 
 
+def safe_folder_name(text: str, fallback: str = "untitled") -> str:
+    """Loại bỏ ký tự cấm của OS (\\ / : * ? \" < > |) nhưng giữ nguyên Unicode (tiếng Việt, Nhật, Hàn, Anh)."""
+    cleaned = re.sub(r'[\\/*?:"<>|\r\n\t]+', " ", text).strip(". ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:120] or fallback
+
+
 @dataclass(frozen=True)
 class SavedImage:
     index: int
