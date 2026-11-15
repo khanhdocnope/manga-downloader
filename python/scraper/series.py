@@ -1,6 +1,7 @@
 """Trích xuất danh sách chapter từ trang thông tin bộ truyện (Series Info)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any, Optional
@@ -21,15 +22,30 @@ CHAPTER_PATTERNS = [
 
 def extract_chapter_number(text: str, href: str) -> float:
     """Rút trích số thứ tự chapter từ text hoặc URL để sắp xếp chính xác."""
-    # Thử từ text trước: "Chương 18.5", "Chapter 1", "Chap 02"
-    m = re.search(r"(?:chap|chapter|chương|tập)\s*(\d+(?:[.-]\d+)?)", text, re.IGNORECASE)
+    # 1. Thử từ text tiếng Nhật/Hàn: "第50.1話", "50話", "第1巻"
+    m_jp = re.search(r"第\s*(\d+(?:[.-]\d+)?)\s*(?:話|章|巻)?", text)
+    if m_jp:
+        try:
+            return float(m_jp.group(1).replace("-", "."))
+        except ValueError:
+            pass
+
+    m_ep = re.search(r"(\d+(?:[.-]\d+)?)\s*話", text)
+    if m_ep:
+        try:
+            return float(m_ep.group(1).replace("-", "."))
+        except ValueError:
+            pass
+
+    # 2. Thử từ text phổ thông: "Chương 18.5", "Chapter 1", "Chap 02", "Ep 5"
+    m = re.search(r"(?:chap|chapter|chương|tập|ep\.?)\s*(\d+(?:[.-]\d+)?)", text, re.IGNORECASE)
     if m:
         try:
             return float(m.group(1).replace("-", "."))
         except ValueError:
             pass
 
-    # Thử từ URL
+    # 3. Thử từ URL
     for pat in CHAPTER_PATTERNS:
         m = pat.search(href)
         if m:
@@ -95,22 +111,31 @@ def parse_series_html(html: str, base_url: str) -> dict[str, Any]:
         if full_url in seen_urls:
             continue
 
-        text = a.get_text(strip=True)
+        text = a.get_text(separator="\n", strip=True)
+        # Lấy dòng đầu tiên làm tên (bỏ phần ngày đăng bên dưới nếu có)
+        clean_name = text.split("\n")[0].strip() if text else ""
+        if not clean_name:
+            continue
+
         # Kiểm tra xem link có phải là chapter không
         is_chapter = False
         text_lower = text.lower()
         href_lower = href.lower()
 
-        if any(k in text_lower for k in ["chap", "chapter", "chương", "tập", "ep."]):
+        if any(k in text_lower for k in ["chap", "chapter", "chương", "tập", "ep.", "話", "第"]):
             is_chapter = True
-        elif any(k in href_lower for k in ["/chap", "/chapter", "-chap-", "-chapter-", "/c-"]):
+        elif any(k in href_lower for k in ["/chap", "/chapter", "-chap-", "-chapter-", "/c-", "/read-"]):
             is_chapter = True
 
         if is_chapter:
-            seen_urls.add(full_url)
             num = extract_chapter_number(text, href)
+            # Bỏ qua các nút chung chung như "Đọc ngay", "読む" nếu không trích xuất được số chapter
+            if num == 999999.0 and clean_name.lower() in ["đọc", "đọc ngay", "read", "read now", "読む"]:
+                continue
+
+            seen_urls.add(full_url)
             raw_chapters.append({
-                "name": text if text else f"Chapter {num if num != 999999.0 else len(raw_chapters)+1}",
+                "name": clean_name if clean_name else f"Chapter {num if num != 999999.0 else len(raw_chapters)+1}",
                 "url": full_url,
                 "num": num,
             })
@@ -138,7 +163,7 @@ def parse_series_html(html: str, base_url: str) -> dict[str, Any]:
 
 
 async def fetch_series_info(url: str, cookies: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
-    """Lấy danh sách chapter từ URL truyện, tự động fallback sang Playwright nếu web chặn bot."""
+    """Lấy danh sách chapter từ URL truyện, tự động fallback sang Playwright nếu web chặn bot hoặc là SPA."""
     headers = {
         "User-Agent": DEFAULT_UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8",
@@ -157,17 +182,13 @@ async def fetch_series_info(url: str, cookies: Optional[list[dict[str, Any]]] = 
     except Exception as exc:
         log.info("HTTP trực tiếp không thành công (%s), chuyển sang browser...", exc)
 
-    # 2. Fallback sang Playwright Headless
+    # 2. Fallback sang Playwright Headless cho SPA / Cloudflare
     from scraper.browser import BrowserSession
     async with BrowserSession(headless=True) as session:
-        page = await session.context.new_page()
+        page = await session.open(url, timeout_ms=30000)
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            # Chờ một chút để script render danh sách chapter
-            try:
-                await page.wait_for_load_state("networkidle", timeout=6000)
-            except Exception:
-                pass
+            # Chờ thêm 2 giây để các framework SPA (React/Vue/Next/Nuxt) mount hoàn tất danh sách chapter
+            await asyncio.sleep(2.0)
             content = await page.content()
             res = parse_series_html(content, page.url)
             return res

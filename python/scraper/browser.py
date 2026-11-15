@@ -101,6 +101,10 @@ class BrowserSession:
         self._captured: dict[str, CapturedImage] = {}
         self._seq = 0
 
+    @property
+    def context(self) -> Optional[BrowserContext]:
+        return self._context
+
     async def __aenter__(self) -> "BrowserSession":
         self._pw = await async_playwright().start()
         launch_args = ["--disable-blink-features=AutomationControlled"]
