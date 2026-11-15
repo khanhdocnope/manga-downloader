@@ -51,7 +51,6 @@ fn inspect(data: &[u8]) -> Option<(usize, usize, Option<&'static str>)> {
         ImageType::Jpeg => Some(".jpg"),
         ImageType::Png => Some(".png"),
         ImageType::Webp => Some(".webp"),
-        ImageType::Avif => Some(".avif"),
         ImageType::Gif => Some(".gif"),
         _ => None,
     };
